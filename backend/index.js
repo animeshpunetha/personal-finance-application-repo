@@ -9,6 +9,7 @@ const userRoutes = require('./routes/userRoutes'); // Import user routes
 const categoryRoutes = require('./routes/categoryRoutes'); // Import category routes
 const transactionRoutes = require('./routes/transactionRoutes'); // Import transaction routes
 const dashboardRoutes = require('./routes/dashboardRoutes'); // Import dashboard routes
+const uploadRoutes = require('./routes/uploadRoutes'); // Import upload routes
 
 
 // Connect to the database
@@ -41,6 +42,11 @@ app.use('/api/transactions', transactionRoutes);
 
 // Use the dashboard routes
 app.use('/api/dashboard', dashboardRoutes); 
+
+// Use the upload routes
+app.use('/api/upload', uploadRoutes); 
+
+
 
 
 // Start the server
