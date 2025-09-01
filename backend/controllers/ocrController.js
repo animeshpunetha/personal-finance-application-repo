@@ -3,12 +3,19 @@ const { createWorker } = require('tesseract.js');
 const path = require('path');
 const fs = require('fs');
 
+// This code uploads a receipt image, extracts its text using OCR, 
+// parses key fields (amount, date, store name, category), and returns
+//  a structured JSON response while cleaning up temporary files.
+
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+// It scans the input text for words/phrases like "total", "grand total", or "amount due".
+// Once a keyword is found, it looks around that location for numeric values (currency or amounts).
+// It returns the number closest to the keyword, assuming it represents the total amount.
 const findTotal = (text) => {
   const lines = text.split('\n');
   
@@ -32,6 +39,13 @@ const findTotal = (text) => {
   return null;
 };
 
+// ^ Search text for keywords like total or amount due → 
+// | find nearest numeric value → 
+// | return it as the total amount.
+
+
+// Scan text for common date patterns → extract the first match →
+//  convert it to a standardized ISO date format.
 const findDate = (text) => {
   // Common date patterns in receipts
   const dateRegexes = [
@@ -58,6 +72,10 @@ const findDate = (text) => {
   return null;
 };
 
+// Parse the given text → identify the part that best represents a summary or item 
+// description (likely using keywords, patterns, or surrounding context) → return 
+// this extracted descriptive text.
+
 const findDescription = (text) => {
   const lines = text.split('\n');
   
@@ -65,7 +83,7 @@ const findDescription = (text) => {
   const descriptionPatterns = [
     /(?:store|shop|business|company|restaurant|cafe|market|mall|outlet)[\s:]*([^\n]+)/i,
     /(?:merchant|vendor|seller)[\s:]*([^\n]+)/i,
-    /^([A-Z\s&]+(?:STORE|SHOP|RESTAURANT|MARKET|OUTLET|LTD|INC|LLC))$/i
+    /^([A-Z\s&]+(?:STORE|SHOP|MART|MALL|RESTAURANT|MARKET|OUTLET|LTD|INC|LLC|BROTHERS))$/i
   ];
 
   for (const line of lines) {
@@ -96,6 +114,10 @@ const findDescription = (text) => {
   return null;
 };
 
+// Analyze the receipt text → compare words against predefined category keyword 
+// lists (e.g., “milk, bread” → groceries, “pizza, burger” → restaurant) → 
+// return that category.
+
 const findCategory = (text) => {
   const textLower = text.toLowerCase();
   
@@ -120,6 +142,8 @@ const findCategory = (text) => {
 
   return null;
 };
+
+// The parseReceipt function processes an uploaded receipt image using Tesseract.js OCR to extract text, then identifies key details like total amount, date, description, and category. It returns this parsed data in JSON format. It also validates the file type, handles errors.
 
 const parseReceipt = async (req, res) => {
   if (!req.file) {

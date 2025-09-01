@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { EnhancedErrorHandler } from '../utils/errorHandler';
+import { useAuth } from '../contexts/AuthContext';
 
 const RegisterPage = () => {
   // State to hold the form input values
@@ -12,37 +14,57 @@ const RegisterPage = () => {
   });
   // State to hold any error messages from the API
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   // Function to update state when user types in an input field
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    // Clear error when user starts typing
+    if (error) setError('');
   };
 
   // Function to handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault(); // Prevent default form submission which reloads the page
     setError(''); // Clear previous errors
+    setIsSubmitting(true);
 
     try {
       // The URL for our backend register endpoint
       const url = 'http://localhost:5000/api/users/register';
       const { data } = await axios.post(url, formData);
 
-      // Save user info and token to local storage
-      localStorage.setItem('userInfo', JSON.stringify(data));
-
-      // Redirect to the dashboard on successful registration
-      navigate('/dashboard');
-    } catch (err) {
-      // If the API returns an error (e.g., user already exists)
-      if (err.response && err.response.data.message) {
-        setError(err.response.data.message);
+      // Use the auth context to login (auto-login after registration)
+      const loginResult = login(data);
+      if (loginResult.success) {
+        navigate('/dashboard');
       } else {
-        setError('Registration failed. Please try again.');
+        setError(loginResult.error || 'Failed to create account');
       }
-      console.error('Registration error:', err);
+    } catch (err) {
+      // Enhanced error handling
+      const classifiedError = EnhancedErrorHandler.classifyError(err);
+      
+      // Handle network errors
+      if (!err.response) {
+        setError('Network error. Please check your internet connection.');
+        return;
+      }
+      
+      // Set user-friendly error message
+      setError(classifiedError.userFriendlyMessage);
+      
+      // Log detailed error for debugging
+      console.error('[Register] Error:', {
+        status: classifiedError.status,
+        message: classifiedError.message,
+        type: classifiedError.type
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -63,6 +85,7 @@ const RegisterPage = () => {
             onChange={handleChange}
             value={formData.username}
             className="w-full p-2 rounded bg-gray-700 border border-gray-600 focus:outline-none focus:border-blue-500"
+            disabled={isSubmitting}
           />
         </div>
         <div className="mb-4">
@@ -75,6 +98,7 @@ const RegisterPage = () => {
             onChange={handleChange}
             value={formData.email}
             className="w-full p-2 rounded bg-gray-700 border border-gray-600 focus:outline-none focus:border-blue-500"
+            disabled={isSubmitting}
           />
         </div>
         <div className="mb-6">
@@ -87,10 +111,22 @@ const RegisterPage = () => {
             onChange={handleChange}
             value={formData.password}
             className="w-full p-2 rounded bg-gray-700 border border-gray-600 focus:outline-none focus:border-blue-500"
+            disabled={isSubmitting}
           />
         </div>
-        <button type="submit" className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
-          Sign Up
+        <button 
+          type="submit" 
+          className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <span className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              Creating Account...
+            </span>
+          ) : (
+            'Sign Up'
+          )}
         </button>
         <p className="mt-4 text-center">
           Already have an account? <Link to="/login" className="text-blue-400 hover:underline">Login</Link>

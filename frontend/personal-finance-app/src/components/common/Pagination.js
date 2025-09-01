@@ -1,6 +1,19 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { usePagination } from '../hooks/usePagination';
 
+/*
+Uses a custom usePagination hook to calculate which page numbers 
+to display, inserting "..." when there are too many pages to show 
+all at once.
+
+Renders a Previous button (disabled on the first page), clickable 
+page numbers (highlighting the current page), and a Next button 
+(disabled on the last page).
+
+Calls the onPageChange function whenever a button is clicked, 
+updating the currentPage so the data view changes accordingly
+*/
+
 const Pagination = ({ currentPage, totalPages, onPageChange }) => {
   const pages = usePagination({ currentPage, totalPages });
   if (totalPages <= 1) return null;

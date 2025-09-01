@@ -2,6 +2,9 @@
 // src/hooks/usePagination.js
 import { useMemo } from 'react';
 
+// This hook dynamically calculates which page numbers should be shown
+//  in your pagination bar.Instead of always rendering every single page
+
 export const usePagination = ({ totalPages, currentPage, siblings = 1 }) => {
   const paginationRange = useMemo(() => {
     const totalPageNumbers = siblings * 2 + 3 + 2;

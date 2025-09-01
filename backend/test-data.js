@@ -7,6 +7,8 @@ const Transaction = require('./models/Transaction.js');
 
 dotenv.config();
 
+// this file is for testing out our backend.
+
 const addTestData = async () => {
   try {
     // Connect to database

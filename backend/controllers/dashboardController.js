@@ -1,103 +1,4 @@
 // // backend/controllers/dashboardController.js
-// const Transaction = require('../models/Transaction.js');
-// const mongoose = require('mongoose');
-
-// const getDashboardSummary = async (req, res) => {
-//   try {
-//     console.log('Dashboard request received for user:', req.user._id);
-    
-//     const userId = new mongoose.Types.ObjectId(req.user._id);
-//     console.log('Converted userId:', userId);
-
-//     // First, let's check if there are any transactions for this user
-//     const totalTransactions = await Transaction.countDocuments({ user: userId });
-//     console.log('Total transactions found for user:', totalTransactions);
-
-//     if (totalTransactions === 0) {
-//       console.log('No transactions found for user, returning zero values');
-//       return res.json({
-//         totalIncome: 0,
-//         totalExpense: 0,
-//         netBalance: 0,
-//         pieChartData: [],
-//         message: 'No transactions found for this user'
-//       });
-//     }
-
-//     // 1. Calculate totals and group expenses by category using Aggregation
-//     const aggregationResult = await Transaction.aggregate([
-//       // Stage 1: Filter transactions for the logged-in user
-//       { $match: { user: userId } },
-//       // Stage 2: Group all documents to calculate sums and collect category expenses
-//       {
-//         $group: {
-//           _id: null, // Group all documents into one
-//           totalIncome: {
-//             $sum: {
-//               $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0],
-//             },
-//           },
-//           totalExpense: {
-//             $sum: {
-//               $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0],
-//             },
-//           },
-//           // We also need to get the category details for the pie chart
-//           expensesByCategory: {
-//               $push: {
-//                 $cond: [
-//                     { $eq: ["$type", "expense"] },
-//                     { categoryId: '$category', amount: '$amount' },
-//                     "$$REMOVE" // $$REMOVE is a special variable to exclude non-expense items
-//                 ]
-//               }
-//           }
-//         },
-//       },
-//     ]);
-
-//     // 2. Handle case when no transactions exist
-//     const summary = aggregationResult[0] || { totalIncome: 0, totalExpense: 0, expensesByCategory: [] };
-
-//     // 3. Only populate if there are expenses by category
-//     let pieChartData = [];
-//     if (summary.expensesByCategory && summary.expensesByCategory.length > 0) {
-//       await Transaction.populate(summary.expensesByCategory, { path: 'categoryId', select: 'name' });
-
-//       // 4. Format the expensesByCategory data for the frontend chart
-//       const formattedExpenses = summary.expensesByCategory.reduce((acc, item) => {
-//           const categoryName = item.categoryId ? item.categoryId.name : 'Uncategorized';
-//           acc[categoryName] = (acc[categoryName] || 0) + item.amount;
-//           return acc;
-//       }, {});
-
-//       pieChartData = Object.keys(formattedExpenses).map(name => ({
-//           name,
-//           value: formattedExpenses[name],
-//       }));
-//     }
-
-//     // 5. Send the final, structured response
-//     const response = {
-//       totalIncome: summary.totalIncome || 0,
-//       totalExpense: summary.totalExpense || 0,
-//       netBalance: (summary.totalIncome || 0) - (summary.totalExpense || 0),
-//       pieChartData, // Send the data pre-formatted for the chart
-//     };
-
-//     console.log('Sending dashboard response:', response); // Debug log
-//     res.json(response);
-
-//   } catch (error) {
-//     console.error('Dashboard summary error:', error);
-//     res.status(500).json({ message: 'Server Error' });
-//   }
-// };
-
-// module.exports = { getDashboardSummary };
-
-
-// backend/controllers/dashboardController.js (NEW VERSION)
 const Transaction = require('../models/Transaction.js');
 const mongoose = require('mongoose');
 
@@ -107,6 +8,10 @@ const getDashboardSummary = async (req, res) => {
     const userId = new mongoose.Types.ObjectId(req.user._id);
 
     // --- Aggregation Pipeline for Summary Cards & Pie Chart ---
+    // JavaScript code that builds a MongoDB aggregation pipeline
+      //Only consider transactions that belong to the currently logged-in user.
+      // Combine all those transactions into one single object with summary fields.
+      // If a transaction isn’t an expense, it’s skipped (not added to expensesByCategory).
     const summaryPipeline = [
       { $match: { user: userId } },
       {
@@ -124,6 +29,10 @@ const getDashboardSummary = async (req, res) => {
     ];
     
     // --- Aggregation Pipeline for the Bar Chart (Monthly Data for last 6 months) ---
+    // The pipeline filters the user’s transactions from the last six months, 
+    // groups them by year and month, calculates the total income and total 
+    // expense for each month, sorts the results chronologically, and formats 
+    // the output for easy use (e.g., charts).
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
@@ -149,14 +58,29 @@ const getDashboardSummary = async (req, res) => {
     ];
 
     // --- Execute both aggregations in parallel for performance ---
+    /*
+    //Runs two MongoDB aggregation queries (summaryPipeline and barChartPipeline) 
+    // at the same time instead of one after the other.Promise.all() waits until 
+    // both queries finish and gives you their results as an array
+    // This makes the backend faster because both DB operations happen concurrently.
+    */
     const [summaryResult, barChartResult] = await Promise.all([
         Transaction.aggregate(summaryPipeline),
         Transaction.aggregate(barChartPipeline)
     ]);
     
     // --- Process Summary & Pie Chart Data ---
+    //We take all expense records, populate their category names 
+    // (replace category IDs with names), sum the amounts per category,
+    //  and convert the result into an array of { name, value } objects
+    //  for the pie chart.
     const summary = summaryResult[0] || { totalIncome: 0, totalExpense: 0, expensesByCategory: [] };
 
+    // The code calculates a user’s total income, total expenses, and
+    //  net balance, groups expenses by category for a pie chart, and
+    //  aggregates monthly income and expenses for the bar chart (last
+    //  6 months). It then sends all this structured financial data as
+    //  a single JSON response to the frontend.
     let pieChartData = [];
     if (summary.expensesByCategory && summary.expensesByCategory.length > 0) {
       await Transaction.populate(summary.expensesByCategory, { path: 'category', select: 'name' });

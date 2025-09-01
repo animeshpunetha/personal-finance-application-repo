@@ -5,6 +5,8 @@ const Category = require('../models/Category.js');
 // @desc    Get all transactions for a user, with date filtering
 // @route   GET /api/transactions
 const getTransactions = async (req, res) => {
+  // It fetches only 10 records at a time and sends to the client thus reducing 
+  // one time load at the server and increasing scalability
   try {
     // Set the number of items per page
     const limit = parseInt(req.query.limit) || 10;

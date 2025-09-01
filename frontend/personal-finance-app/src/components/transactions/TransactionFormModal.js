@@ -2,10 +2,22 @@
 
 // src/components/transactions/TransactionFormModal.js
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, DollarSign, Tag, FileText, Upload, Camera, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Calendar, Tag, FileText, Camera, CheckCircle, AlertCircle, IndianRupee } from 'lucide-react';
 import axios from 'axios';
-import { IndianRupee } from "lucide-react";
+import { toast } from 'react-hot-toast';
+import { EnhancedErrorHandler, handleOCRError, handleFileError } from '../../utils/errorHandler';
+import { useAuth } from '../../contexts/AuthContext';
 
+/*
+Functions are-
+Adding and editing transactions
+
+Uploading receipts (with OCR auto-fill)
+
+Creating a new categories
+
+Error handling and status indicators (loading, success, error)
+*/
 
 // --- Reusable Sub-Components ---
 const Modal = ({ isOpen, onClose, title, children }) => {
@@ -23,6 +35,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
     );
 };
 
+// A reusable toggle switch UI (for selecting Expense or Income).
 const SegmentedControl = ({ value, onChange, options }) => (
     <div className="flex w-full bg-gray-100 p-1 rounded-lg">
       {options.map(opt => (
@@ -47,6 +60,11 @@ const TransactionFormModal = ({ isOpen, onClose, onSubmit, categories, onAddCate
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('idle'); // idle, success, error
+  const [error, setError] = useState(''); // New state for error messages
+  const [isSubmitting, setIsSubmitting] = useState(false); // New state for submission status
+
+  // Get auth context
+  const { getToken } = useAuth();
 
   // Effect to populate form for editing
   useEffect(() => {
@@ -70,6 +88,8 @@ const TransactionFormModal = ({ isOpen, onClose, onSubmit, categories, onAddCate
     setFormState(prev => ({ ...prev, [name]: value }));
   };
   
+  // When switching between Expense/Income, reset category 
+  // to avoid mismatched categories.
   const handleTypeChange = (type) => {
     setFormState(prev => ({...prev, type, category: ''}));
     setNewCategoryName('');
@@ -95,15 +115,14 @@ const TransactionFormModal = ({ isOpen, onClose, onSubmit, categories, onAddCate
       const formData = new FormData();
       formData.append('receiptImage', file);
 
-      // Get user token from localStorage
-      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
-      if (!userInfo || !userInfo.token) {
+      const token = getToken();
+      if (!token) {
         throw new Error('User not authenticated');
       }
 
       const config = {
         headers: {
-          'Authorization': `Bearer ${userInfo.token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'multipart/form-data',
         },
       };
@@ -112,44 +131,55 @@ const TransactionFormModal = ({ isOpen, onClose, onSubmit, categories, onAddCate
       
       if (response.data.parsedData) {
         setUploadStatus('success');
-        // Auto-fill form with extracted data
         const parsedData = response.data.parsedData;
         const updatedFormState = { ...formState };
         
-        if (parsedData.date) {
-          updatedFormState.date = parsedData.date;
-        }
+        if (parsedData.date) { updatedFormState.date = parsedData.date; }
+        if (parsedData.description) { updatedFormState.description = parsedData.description; }
+        if (parsedData.amount) { updatedFormState.amount = parsedData.amount.toString(); }
+        if (parsedData.type) { updatedFormState.type = parsedData.type; }
         
-        if (parsedData.description) {
-          updatedFormState.description = parsedData.description;
-        }
-        
-        if (parsedData.amount) {
-          updatedFormState.amount = parsedData.amount.toString();
-        }
-        
-        if (parsedData.type) {
-          updatedFormState.type = parsedData.type;
-        }
-        
-        // Try to find matching category
         if (parsedData.category) {
           const matchingCategory = categories.find(cat => 
             cat.type === updatedFormState.type && 
             cat.name.toLowerCase().includes(parsedData.category.toLowerCase())
           );
-          if (matchingCategory) {
-            updatedFormState.category = matchingCategory._id;
-          }
+          if (matchingCategory) { updatedFormState.category = matchingCategory._id; }
         }
-        
         setFormState(updatedFormState);
+        
+        // Show success toast
+        toast.success('Receipt processed successfully! Form fields have been auto-filled.');
       } else {
         throw new Error('No data extracted from receipt');
       }
     } catch (error) {
       console.error('Upload error:', error);
+      
+      // Enhanced error handling for OCR and file upload errors
+      if (handleOCRError(error) || handleFileError(error)) {
+        // Error already handled by the utility
+        setUploadStatus('error');
+        return;
+      }
+      
+      // Handle network errors
+      const networkError = EnhancedErrorHandler.handleNetworkError(error);
+      if (networkError) {
+        setUploadStatus('error');
+        return;
+      }
+      
+      // Handle other errors
+      const classifiedError = EnhancedErrorHandler.classifyError(error);
       setUploadStatus('error');
+      
+      // Show user-friendly error message
+      if (classifiedError.userFriendlyMessage) {
+        toast.error(classifiedError.userFriendlyMessage);
+      } else {
+        toast.error('Failed to process receipt. Please try again.');
+      }
     } finally {
       setIsUploading(false);
     }
@@ -159,28 +189,56 @@ const TransactionFormModal = ({ isOpen, onClose, onSubmit, categories, onAddCate
     const isAddingNewCategory = formState.category === ADD_NEW_CATEGORY_VALUE;
     
     if (!formState.date || !formState.description || !formState.amount || (isAddingNewCategory ? !newCategoryName : !formState.category)) {
-      alert('Please fill in all required fields.');
+      toast.error('Please fill in all required fields.');
       return;
     }
 
-    let categoryId = formState.category;
-    if (isAddingNewCategory) {
-      try {
-        const newCategory = await onAddCategory({ name: newCategoryName, type: formState.type });
-        categoryId = newCategory._id;
-      } catch (err) {
-        alert('Failed to create new category.');
-        return;
+    try {
+      setIsSubmitting(true);
+      setError(''); // Clear any previous errors
+      
+      let categoryId = formState.category;
+      if (isAddingNewCategory) {
+        try {
+          const newCategory = await onAddCategory({ name: newCategoryName, type: formState.type });
+          categoryId = newCategory._id;
+        } catch (err) {
+          // Enhanced error handling for category creation
+          const classifiedError = EnhancedErrorHandler.classifyError(err);
+          toast.error(classifiedError.userFriendlyMessage || 'Failed to create new category.');
+          return;
+        }
       }
-    }
-    
-    const finalTransactionData = {
-      ...formState,
-      category: categoryId,
-      amount: parseFloat(formState.amount),
-    };
+      
+      const finalTransactionData = {
+        ...formState,
+        category: categoryId,
+        amount: parseFloat(formState.amount),
+      };
 
-    onSubmit(finalTransactionData); // Pass the final data up to the parent
+      const result = await onSubmit(finalTransactionData); // Pass the final data up to the parent
+      
+      if (result && result.success) {
+        toast.success(mode === 'edit' ? 'Transaction updated successfully!' : 'Transaction added successfully!');
+        onClose();
+      } else if (result && result.error) {
+        // Error already handled by the hook
+        setError(result.error.userFriendlyMessage || 'Failed to process transaction');
+      }
+    } catch (error) {
+      // Fallback error handling
+      const classifiedError = EnhancedErrorHandler.classifyError(error);
+      setError(classifiedError.userFriendlyMessage || 'An unexpected error occurred');
+      
+      // Log error for debugging
+      console.error('[TransactionForm] Submit error:', {
+        status: classifiedError.status,
+        message: classifiedError.message,
+        type: classifiedError.type
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -202,6 +260,16 @@ const TransactionFormModal = ({ isOpen, onClose, onSubmit, categories, onAddCate
             <div className="flex items-center text-red-800">
               <AlertCircle className="w-5 h-5 mr-2" />
               <span className="text-sm font-medium">Failed to process receipt. Please try again or fill manually.</span>
+            </div>
+          </div>
+        )}
+
+        {/* Form submission error */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <div className="flex items-center text-red-800">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              <span className="text-sm font-medium">{error}</span>
             </div>
           </div>
         )}
@@ -272,9 +340,18 @@ const TransactionFormModal = ({ isOpen, onClose, onSubmit, categories, onAddCate
         </div>
 
         <div className="flex space-x-3 pt-4">
-          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
-          <button type="button" onClick={handleSubmit} className="flex-1 px-4 py-2 bg-blue-600 text-gray-900 rounded-lg hover:bg-blue-700">
-            {mode === 'edit' ? 'Update Transaction' : 'Add Transaction'}
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50" disabled={isSubmitting}>
+            Cancel
+          </button>
+          <button type="button" onClick={handleSubmit} className="flex-1 px-4 py-2 bg-blue-600 text-gray-900 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <span className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                {mode === 'edit' ? 'Updating...' : 'Adding...'}
+              </span>
+            ) : (
+              mode === 'edit' ? 'Update Transaction' : 'Add Transaction'
+            )}
           </button>
         </div>
       </div>

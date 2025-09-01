@@ -1,5 +1,10 @@
 import { Edit, Trash2, Tag, ClipboardX, Plus } from 'lucide-react';
 
+/*
+Displays a list of transactions in a table.
+Supports edit/delete actions.
+Shows a “No Transactions” message with a button to add one.
+*/
 const TransactionRow = ({ transaction, onEdit, onDelete, formatDate, formatCurrency }) => (
   <tr className="hover:bg-gray-50">
     <td className="px-4 py-2 text-sm">{formatDate(transaction.date)}</td>

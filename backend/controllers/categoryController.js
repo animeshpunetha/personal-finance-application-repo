@@ -1,6 +1,8 @@
 // backend/controllers/categoryController.js
 const Category = require('../models/Category.js');
 
+
+// initialise getter and setter methods for Category.
 // @desc    Get all categories for the logged-in user
 // @route   GET /api/categories
 const getCategories = async (req, res) => {
@@ -20,10 +22,12 @@ const createCategory = async (req, res) => {
   const { name, type } = req.body;
 
   // Basic validation
+  // if any of name || type not mentioned in the request, then throw err to provide 
+  // those details.
   if (!name || !type) {
     return res.status(400).json({ message: 'Please provide a name and type' });
   }
-
+//else create category and link the particular category to the logged-in user.
   try {
     const category = await Category.create({
       name,
@@ -36,4 +40,5 @@ const createCategory = async (req, res) => {
   }
 };
 
-module.exports = { getCategories, createCategory };
+module.exports = { getCategories, createCategory }; // export the modules 
+// to reusse them later on.

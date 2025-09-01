@@ -29,12 +29,14 @@ userSchema.pre('save', async function (next) {
   }
 
   // Generate a salt and hash the password
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
+  const salt = await bcrypt.genSalt(10); // create a random salt with complexity of 10 rounds
+  this.password = await bcrypt.hash(this.password, salt); // hash the password thud encrypt it.
   next();
 });
 
 // Method to compare entered password with the hashed password in the DB
+// compare the entered password with the hashed password, if it matches 
+// then authenticated, else throw err.
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
